@@ -5,7 +5,7 @@ import FormButton from '@/components/ui/FormButton';
 import FormInput from '@/components/ui/FormInput';
 import ErrorText from '@/components/ui/ErrorText';
 import Card from '@/components/ui/Card';
-import { encodeFunctionData, parseAbi, publicActions } from "viem"
+import { encodeFunctionData, parseAbi, publicActions, createPublicClient, http } from "viem"
 import CardHeader from '@/components/ui/CardHeader';
 import { getFaucetUrl, getNetworkToken } from '@/utils/network';
 import showToast from '@/utils/showToast';
@@ -17,6 +17,14 @@ import { createEcdsaKernelAccountClient } from '@zerodev/presets/zerodev';
 import { providerToSmartAccountSigner } from 'permissionless';
 import { polygonMumbai } from 'viem/chains';
 import { bundlerActions } from "permissionless"
+import {
+  deserializeSessionKeyAccount,
+  oneAddress,
+} from "@zerodev/session-key"
+import {
+  createZeroDevPaymasterClient,
+  createKernelAccountClient,
+} from "@zerodev/sdk"
 
 /*
 // Get the Provider from Magic and convert it to a SmartAccountSigner
@@ -27,24 +35,32 @@ const MintNFT = () => {
   const [disabled, setDisabled] = useState(!toAddress);
   const [hash, setHash] = useState('');
   const [toAddressError, setToAddressError] = useState(false);
+  const [sessionKey, setSessionKey] = useState('');
+	const [publicAddress, setPublicAddress] = useState('');
 
+  useEffect(() => {
+    setSessionKey(localStorage.getItem('session_key') ?? '');
+  }, [setSessionKey]);
 
+	useEffect(() => {
+		setPublicAddress(localStorage.getItem('user') ?? '');
+	}, [setPublicAddress])
   // Magic setup
-  const publicAddress = localStorage.getItem('user');
   useEffect(() => {
     setDisabled(!toAddress);
     setToAddressError(false);
   }, [toAddress]);
+	const contractAddress = '0x34bE7f35132E97915633BC1fc020364EA5134863'
+  const contractABI = parseAbi([
+    'function mint(address _to) public',
+    'function balanceOf(address owner) external view returns (uint256 balance)'
+  ])
 
   const mintNFT = useCallback(async () => {
+		console.log("Minting with smart account signer")
     // ZeroDev setup
     const magicProvider = await magic.wallet.getProvider();
     const smartAccountSigner = await providerToSmartAccountSigner(magicProvider);
-    const contractAddress = '0x34bE7f35132E97915633BC1fc020364EA5134863'
-    const contractABI = parseAbi([
-      'function mint(address _to) public',
-      'function balanceOf(address owner) external view returns (uint256 balance)'
-    ])
     // Set up your Kernel client
     const kernelClient = await createEcdsaKernelAccountClient({
       chain: polygonMumbai,
@@ -93,20 +109,51 @@ const MintNFT = () => {
     console.log(`NFT balance: ${nftBalance}`)
   }, [web3, publicAddress, toAddress]);
 
+	const mintWithSessionKey = useCallback(async () => {
+    console.log('Minting With Session Key')
+
+		const publicClient = createPublicClient({
+		  chain: polygonMumbai,
+			transport: http("https://rpc.zerodev.app/api/v2/bundler/3b03e7bc-8dc5-46ff-9ef4-4a08e0cf2621"),
+		})
+	  const sessionKeyAccount = await deserializeSessionKeyAccount(publicClient, sessionKey)
+
+	  const kernelClient = createKernelAccountClient({
+	    account: sessionKeyAccount,
+	    chain: polygonMumbai,
+			transport: http("https://rpc.zerodev.app/api/v2/bundler/3b03e7bc-8dc5-46ff-9ef4-4a08e0cf2621"),
+	    sponsorUserOperation: async ({ userOperation }): Promise<UserOperation> => {
+	      const kernelPaymaster = createZeroDevPaymasterClient({
+	        chain: polygonMumbai,
+					transport: http("https://rpc.zerodev.app/api/v2/paymaster/3b03e7bc-8dc5-46ff-9ef4-4a08e0cf2621"),
+	      })
+	      return kernelPaymaster.sponsorUserOperation({
+	        userOperation,
+	      })
+	    },
+	  })
+
+	  const userOpHash = await kernelClient.sendUserOperation({
+	    userOperation: {
+	      callData: await sessionKeyAccount.encodeCallData({
+	        to: contractAddress,
+	        value: BigInt(0),
+	        data: encodeFunctionData({
+	          abi: contractABI,
+	          functionName: "mint",
+	          args: [toAddress],
+	        }),
+	      }),
+	    },
+	  })
+
+	  console.log("Destination addr:", toAddress)
+	  console.log("userOp hash:", userOpHash)
+	});
+
   return (
     <Card>
       <CardHeader id="mint-nft">Mint NFT</CardHeader>
-      {getFaucetUrl() && (
-        <div>
-          <a href={getFaucetUrl()} target="_blank" rel="noreferrer">
-            <FormButton onClick={() => null} disabled={false}>
-              Get Test {getNetworkToken()}
-              <Image src={Link} alt="link-icon" className="ml-[3px]" />
-            </FormButton>
-          </a>
-          <Divider />
-        </div>
-      )}
 
       <FormInput
         value={toAddress}
@@ -114,9 +161,15 @@ const MintNFT = () => {
         placeholder="Receiving Address"
       />
       {toAddressError ? <ErrorText>Invalid address</ErrorText> : null}
-      <FormButton onClick={mintNFT} disabled={!toAddress || disabled}>
-        Mint NFT
-      </FormButton>
+			{sessionKey.length > 0 ? (
+      	<FormButton onClick={mintWithSessionKey} disabled={!toAddress || disabled}>
+      	  Mint NFT With Session Key
+      	</FormButton>
+			) : (
+      	<FormButton onClick={mintNFT} disabled={!toAddress || disabled}>
+      	  Mint NFT
+      	</FormButton>
+			)}
 
       {hash ? (
         <>

@@ -1,5 +1,5 @@
 {
-  "name": "gas-sponsor",
+  "name": "gas-sponsor-demo",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -25,7 +25,8 @@
     "typescript": "5.1.6",
     "web3": "^4.0.2",
     "@zerodev/sdk": "^5.0.9",
-    "@zerodev/presets": "^5.1.2"
+    "@zerodev/presets": "^5.1.2",
+    "@zerodev/session-key": "^5.0.2"
   },
   "devDependencies": {
     "eslint": "^8.45.0",

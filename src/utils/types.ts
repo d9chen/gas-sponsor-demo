@@ -5,4 +5,9 @@ export type LoginProps = {
   setToken: Dispatch<SetStateAction<string>>
 }
 
+export type SessionKeyProps = {
+  sessionKey: string
+  setSessionKey: Dispatch<SetStateAction<string>>
+}
+
 export type { Magic } from '../components/magic/MagicProvider'
