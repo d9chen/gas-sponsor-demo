@@ -27,13 +27,13 @@ export default function Dashboard({ token, setToken }: LoginProps) {
         <Spacer size={10} />
         <SendTransaction />
         <Spacer size={10} />
+	<MintNFT />
+        <Spacer size={10} />
 	{sessionKey.length > 0 ? (
 	  <SessionKeyInfo />
         ) : (
 	  <SetupSessionKey />
         )}
-        <Spacer size={10} />
-	<MintNFT />
         <Spacer size={10} />
         <WalletMethods token={token} setToken={setToken} />
         <Spacer size={15} />
