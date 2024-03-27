@@ -12,9 +12,13 @@ import Spacer from '@/components/ui/Spacer';
 import TransactionHistory from '@/components/ui/TransactionHistory';
 import Image from 'next/image';
 import Link from 'public/link.svg';
+import { createEcdsaKernelAccountClient } from '@zerodev/presets/zerodev';
+import { providerToSmartAccountSigner } from 'permissionless';
+import { polygonMumbai } from 'viem/chains';
+import { ethers, toNumber } from 'ethers';
 
 const SendTransaction = () => {
-  const { web3 } = useMagic();
+  const { magic, web3 } = useMagic();
   const [toAddress, setToAddress] = useState('');
   const [amount, setAmount] = useState('');
   const [disabled, setDisabled] = useState(!toAddress || !amount);
@@ -29,7 +33,7 @@ const SendTransaction = () => {
     setToAddressError(false);
   }, [amount, toAddress]);
 
-  const sendTransaction = useCallback(() => {
+  const sendTransaction = useCallback(async () => {
     if (!web3?.utils.isAddress(toAddress)) {
       return setToAddressError(true);
     }
@@ -37,31 +41,44 @@ const SendTransaction = () => {
       return setAmountError(true);
     }
     setDisabled(true);
-    const txnParams = {
-      from: publicAddress,
-      to: toAddress,
-      value: web3.utils.toWei(amount, 'ether'),
-      gas: 21000,
-    };
-    web3.eth
-      .sendTransaction(txnParams as any)
-      .on('transactionHash', (txHash) => {
-        setHash(txHash);
-        console.log('Transaction hash:', txHash);
-      })
-      .then((receipt) => {
-        showToast({
-          message: 'Transaction Successful',
-          type: 'success',
-        });
-        setToAddress('');
-        setAmount('');
-        console.log('Transaction receipt:', receipt);
-      })
-      .catch((error) => {
-        console.error(error);
-        setDisabled(false);
-      });
+    const magicProvider = await magic.wallet.getProvider();
+    const smartAccountSigner = await providerToSmartAccountSigner(magicProvider, publicAddress as Hex);
+    const provider = new ethers.BrowserProvider(magic.rpcProvider as any);
+
+    try {
+      const accounts = await provider.listAccounts();
+
+
+      const signer = await provider.getSigner();
+
+      // // Set up your Kernel client
+       const kernelClient = await createEcdsaKernelAccountClient({
+         chain: polygonMumbai,
+         projectId: '3b03e7bc-8dc5-46ff-9ef4-4a08e0cf2621',
+         signer: smartAccountSigner,
+       });
+
+      const txnParams = {
+        from: kernelClient.account.address,
+        to: toAddress,
+        value: web3.utils.toWei(amount, 'ether'),
+        gas: 21000,
+      };
+      const signedTransaction = await signer.signTransaction(txnParams);
+       console.log("Kernel account addr: ", kernelClient.account.address);
+
+       // const txnHash = await kernelClient.sendTransaction({
+       //   to: toAddress,
+       //   value: web3.utils.toWei(amount, 'ether'), // default to 0
+       // })
+	    const userOpHash = await kernelClient.sendUserOperation({
+	      userOperation: {callData: signedTransaction['raw']},
+	    })
+    console.log("UserOpHash: ", userOpHash);
+    } catch (err) {
+      console.error(err);
+    }
+
   }, [web3, amount, publicAddress, toAddress]);
 
   return (
